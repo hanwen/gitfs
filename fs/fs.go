@@ -136,7 +136,6 @@ func (t *treeFS) newLinkNode(id *git.Oid) (*linkNode, error) {
 }
 
 func (t *treeFS) newBlobNode(id *git.Oid) (*blobNode, error) {
-	println("blob")
 	n := &blobNode{
 		gitNode: gitNode{
 			fs: t,
@@ -150,7 +149,6 @@ func (t *treeFS) newBlobNode(id *git.Oid) (*blobNode, error) {
 		return nil, err
 	}
 	defer blob.Free()
-	println("blob", blob.Size())
 	n.size = blob.Size()
 	p := filepath.Join(t.dir, id.String())
 	if _, err := os.Lstat(p); os.IsNotExist(err) {
