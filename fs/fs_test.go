@@ -14,25 +14,8 @@ import (
 	git "github.com/libgit2/git2go"
 )
 
-type testCase struct {
-	repo *git.Repository
-	server *fuse.Server
-	mnt string 
-}
-
-func (tc *testCase) Cleanup() {
-	tc.server.Unmount()
-	tc.repo.Free()
-}
-
-func setup() (*testCase, error) {
-	dir, err := ioutil.TempDir("", "fs_test")
-	if err != nil {
-		return nil, err
-	}
-
-	r := filepath.Join(dir, "repo")
-	repo, err := git.InitRepository(r, false)
+func setupRepo(dir string) (*git.Repository, error) {
+	repo, err := git.InitRepository(dir, false)
 	if err != nil {
 		return nil, err
 	}
@@ -91,6 +74,31 @@ func setup() (*testCase, error) {
 		"message", root); err !=  nil {
 		return nil, err
 	}
+
+	return repo, nil
+}
+
+type testCase struct {
+	repo *git.Repository
+	server *fuse.Server
+	mnt string 
+}
+
+func (tc *testCase) Cleanup() {
+	tc.server.Unmount()
+	tc.repo.Free()
+}
+
+func setupBasic() (*testCase, error) {
+	dir, err := ioutil.TempDir("", "fs_test")
+	if err != nil {
+		return nil, err
+	}
+
+	repo, err := setupRepo(filepath.Join(dir, "repo"))
+	if err != nil {
+		return nil, err
+	}
 	
 	fs, err := NewTreeFS(repo, "refs/heads/master")
 	if err != nil {
@@ -116,12 +124,17 @@ func setup() (*testCase, error) {
 }
 
 func TestBasic(t *testing.T) {
-	tc, err := setup()
+	tc, err := setupBasic()
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
+	defer tc.Cleanup()
 
-	fi, err := os.Lstat(tc.mnt + "/file")
+	testGitFS(tc.mnt, t)
+}
+
+func testGitFS(mnt string, t *testing.T) {
+	fi, err := os.Lstat(mnt + "/file")
 	if err != nil {
 		t.Fatalf("Lstat: %v", err)
 	} else if fi.IsDir() {
@@ -130,27 +143,76 @@ func TestBasic(t *testing.T) {
 		t.Fatalf("got size %d, want file size 5", fi.Size())
 	}
 	
-	if fi, err := os.Lstat(tc.mnt + "/dir"); err != nil {
+	if fi, err := os.Lstat(mnt + "/dir"); err != nil {
 		t.Fatalf("Lstat: %v", err)
 	} else if !fi.IsDir() {
 		t.Fatalf("got %v, want dir", fi)
 	}
 
-	if fi, err := os.Lstat(tc.mnt + "/dir/subfile");  err != nil {
+	if fi, err := os.Lstat(mnt + "/dir/subfile");  err != nil {
 		t.Fatalf("Lstat: %v", err)
 	} else if fi.IsDir() || fi.Size() != 5 || fi.Mode() & 0x111 == 0 {
 		t.Fatalf("got %v, want +x file size 5", fi)
 	}
 
-	if fi, err := os.Lstat(tc.mnt + "/link");  err != nil {
+	if fi, err := os.Lstat(mnt + "/link");  err != nil {
 		t.Fatalf("Lstat: %v", err)
 	} else if fi.Mode() & os.ModeSymlink == 0 {
 		t.Fatalf("got %v, want symlink", fi.Mode())
 	}
 
-	if content, err := ioutil.ReadFile(tc.mnt + "/file"); err != nil {
+	if content, err := ioutil.ReadFile(mnt + "/file"); err != nil {
 		t.Fatalf("ReadFile: %v", err)
 	} else if string(content) != "hello" {
 		t.Errorf("got %q, want %q", content, "hello")
 	}
+}
+
+
+func setupMulti() (*testCase, error) {
+	dir, err := ioutil.TempDir("", "fs_test")
+	if err != nil {
+		return nil, err
+	}
+
+	repo, err := setupRepo(filepath.Join(dir, "repo"))
+	if err != nil {
+		return nil, err
+	}
+	
+	fs := NewMultiGitFS()
+	if err != nil {
+		return nil, err
+	}
+	
+	mnt := filepath.Join(dir, "mnt")
+	if err := os.Mkdir(mnt, 0755); err != nil {
+		return nil, err
+	}
+	
+	server, _, err := nodefs.MountFileSystem(mnt, fs, nil)
+	server.SetDebug(true)
+	go server.Serve()
+	if err != nil {
+		return nil, err
+	}
+	
+	return &testCase{
+		repo,
+		server,
+		mnt,
+	}, nil
+}
+
+func TestMultiFS(t *testing.T) {
+	tc, err := setupMulti()
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	defer tc.Cleanup()
+	t.Log(tc.repo.Path())
+	if err := os.Symlink(tc.repo.Path() +  ":master", tc.mnt + "/config/repo"); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+	testGitFS(tc.mnt + "/repo", t)
 }
