@@ -83,6 +83,38 @@ func (n *gitConfigNode) Readlink(c *fuse.Context) ([]byte, fuse.Status) {
 	return []byte(n.repo + ":" + n.treeish), fuse.OK
 }
 
+func (n *configNode) Mkdir(name string, mode uint32, context *fuse.Context) (nodefs.Node, fuse.Status) {
+	corr := n.Inode().New(true, nodefs.NewDefaultNode())
+	n.corresponding.Inode().AddChild(name, corr)
+	c := n.fs.newConfigNode(corr.Node())
+	n.Inode().AddChild(name, n.Inode().New(true, c))
+	return c, fuse.OK
+}
+
+func (n *configNode) Unlink(name string, context *fuse.Context) (code fuse.Status) {
+	linkInode := n.Inode().GetChild(name)
+	if linkInode == nil {
+		return fuse.ENOENT
+	}
+
+	_, ok := linkInode.Node().(*gitConfigNode)
+	if !ok {
+		log.Printf("gitfs: removing %q, child is not a gitConfigNode", name)
+		return fuse.EINVAL
+	}
+
+	gitFSNode := n.corresponding.Inode().GetChild(name)
+	if gitFSNode == nil {
+		return fuse.EINVAL
+	}
+
+	code = n.fs.fsConn.Unmount(gitFSNode)
+	if code.Ok() {
+		n.Inode().RmChild(name)
+	}
+	return code
+}
+
 func (n *configNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
 	components := strings.Split(content, ":")
 	if len(components) != 2 {
@@ -101,7 +133,6 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 		return nil, fuse.ENOENT
 	}
 
-	log.Println("mounting", components)
 	opts := &nodefs.Options{
 		EntryTimeout: time.Hour,
 		NegativeTimeout: time.Hour,

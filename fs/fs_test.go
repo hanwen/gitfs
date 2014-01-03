@@ -191,7 +191,7 @@ func setupMulti() (*testCase, error) {
 	}
 	
 	server, _, err := nodefs.MountFileSystem(mnt, fs, nil)
-	server.SetDebug(true)
+//	server.SetDebug(true)
 	go server.Serve()
 	if err != nil {
 		return nil, err
@@ -210,17 +210,38 @@ func TestMultiFS(t *testing.T) {
 		t.Fatalf("setup: %v", err)
 	}
 	defer tc.Cleanup()
-	t.Log(tc.repo.Path())
-	if err := os.Symlink(tc.repo.Path() +  ":master", tc.mnt + "/config/repo"); err != nil {
+
+	if err := os.Mkdir(tc.mnt + "/config/sub", 0755); err != nil {
+		t.Fatalf("Mkdir %v", err)
+	}
+
+	if fi, err := os.Lstat(tc.mnt + "/sub"); err != nil {
+		t.Fatalf("Lstat: %v", err)
+	} else if !fi.IsDir() {
+		t.Fatalf("want dir, got %v", fi.Mode())
+	}
+	
+	if err := os.Symlink(tc.repo.Path() +  ":master", tc.mnt + "/config/sub/repo"); err != nil {
 		t.Fatalf("Symlink: %v", err)
 	}
-	entries, err := ioutil.ReadDir(tc.mnt)
+	entries, err := ioutil.ReadDir(tc.mnt + "/sub")
 	if err != nil {
 		t.Fatalf("ReadDir: %v", err)
 	}
-	if len(entries) != 2 {
+	if len(entries) != 1 {
 		t.Fatalf("got %v, want 2 entries", entries)
 	}
 	
-	testGitFS(tc.mnt + "/repo", t)
+	testGitFS(tc.mnt + "/sub/repo", t)
+
+	// Ugh. the RELEASE opcode is not synchronized, so it
+	// may not be completed while we try the unmount.
+	time.Sleep(time.Millisecond)
+	if err := os.Remove(tc.mnt + "/config/sub/repo"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+
+	if _, err := os.Lstat(tc.mnt + "/sub/repo"); err == nil  {
+		t.Errorf("repo is still there.")
+	}
 }
