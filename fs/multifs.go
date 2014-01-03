@@ -5,10 +5,12 @@ import (
 	"time"
 	"syscall"
 	"strings"
+	"os"
 	
 	git "github.com/libgit2/git2go"
 
 	"github.com/hanwen/go-fuse/fuse/nodefs"
+	"github.com/hanwen/go-fuse/fuse/pathfs"
 	"github.com/hanwen/go-fuse/fuse"
 )
 
@@ -62,15 +64,13 @@ func (fs *multiGitFS) newConfigNode(corresponding nodefs.Node) *configNode {
 type gitConfigNode struct {
 	nodefs.Node
 
-	repo string
-	treeish string
+	content string
 }
 
-func newGitConfigNode(repo, tree string) *gitConfigNode {
+func newGitConfigNode(content string) *gitConfigNode {
 	return &gitConfigNode{
 		Node: nodefs.NewDefaultNode(),
-		repo: repo,
-		treeish: tree,
+		content: content,
 	}
 }
 
@@ -80,7 +80,7 @@ func (n *gitConfigNode) GetAttr(out *fuse.Attr, file nodefs.File, context *fuse.
 }
 
 func (n *gitConfigNode) Readlink(c *fuse.Context) ([]byte, fuse.Status) {
-	return []byte(n.repo + ":" + n.treeish), fuse.OK
+	return []byte(n.content), fuse.OK
 }
 
 func (n *configNode) Mkdir(name string, mode uint32, context *fuse.Context) (nodefs.Node, fuse.Status) {
@@ -103,12 +103,12 @@ func (n *configNode) Unlink(name string, context *fuse.Context) (code fuse.Statu
 		return fuse.EINVAL
 	}
 
-	gitFSNode := n.corresponding.Inode().GetChild(name)
-	if gitFSNode == nil {
+	root := n.corresponding.Inode().GetChild(name)
+	if root == nil {
 		return fuse.EINVAL
 	}
 
-	code = n.fs.fsConn.Unmount(gitFSNode)
+	code = n.fs.fsConn.Unmount(root)
 	if code.Ok() {
 		n.Inode().RmChild(name)
 	}
@@ -116,34 +116,52 @@ func (n *configNode) Unlink(name string, context *fuse.Context) (code fuse.Statu
 }
 
 func (n *configNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
+	dir := content
 	components := strings.Split(content, ":")
-	if len(components) != 2 {
+	if len(components) > 2 || len(components) == 0{
 		return nil, fuse.Status(syscall.EINVAL)
 	}
-	
-	repo, err := git.OpenRepository(components[0])
-	if err != nil {
-		log.Printf("OpenRepository(%q): %v", components[0], err)
-		return nil, fuse.ENOENT
+	if len(components) == 2 {
+		dir = components[0]
 	}
 	
-	fs, err := NewTreeFS(repo, components[1])
-	if err != nil {
-		log.Printf("NewTreeFS(%q): %v", components[1], err)
-		return nil, fuse.ENOENT
+	if fi, err := os.Lstat(dir); err != nil {
+		return nil, fuse.ToStatus(err)
+	} else if !fi.IsDir() {
+		return nil, fuse.Status(syscall.ENOTDIR)
 	}
 
-	opts := &nodefs.Options{
-		EntryTimeout: time.Hour,
-		NegativeTimeout: time.Hour,
-		AttrTimeout: time.Hour,
-		PortableInodes: true,
+	var opts *nodefs.Options
+	var fs nodefs.FileSystem
+	
+	if len(components) == 1 {
+		fs = pathfs.NewPathNodeFs(pathfs.NewLoopbackFileSystem(content), nil)
+	} else {
+		repo, err := git.OpenRepository(components[0])
+		if err != nil {
+			log.Printf("OpenRepository(%q): %v", components[0], err)
+			return nil, fuse.ENOENT
+		}
+		
+		fs, err = NewTreeFS(repo, components[1])
+		if err != nil {
+			log.Printf("NewTreeFS(%q): %v", components[1], err)
+			return nil, fuse.ENOENT
+		}
+
+		opts = &nodefs.Options{
+			EntryTimeout: time.Hour,
+			NegativeTimeout: time.Hour,
+			AttrTimeout: time.Hour,
+			PortableInodes: true,
+		}
 	}
+	
 	if code := n.fs.fsConn.Mount(n.corresponding.Inode(), name, fs, opts); !code.Ok() {
 		return nil, code
 	}
 
-	linkNode := newGitConfigNode(components[0], components[1])
+	linkNode := newGitConfigNode(content)
 	ch := n.Inode().New(false, linkNode)
 	n.Inode().AddChild(name, ch)
 	return linkNode, fuse.OK
