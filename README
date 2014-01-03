@@ -1,0 +1,19 @@
+
+This is a simple git filesystem.
+
+Usage:
+
+	gitfs $MOUNT &
+	cd $MOUNT/config
+
+	# Create $MOUNT/repo at commit master 
+	ln -s /home/$USER/myrepo:master repo
+
+	# Create $MOUNT/subdir/repo at commit master^^
+	mkdir subdir
+	ln -s /home/$USER/myrepo:master^^ subdir/repo
+	
+	cd $MOUNT/repo
+
+	# Create a transient symlink to store compile outputs.
+	ln -s /tmp/build-products  out
