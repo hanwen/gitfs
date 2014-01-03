@@ -214,5 +214,13 @@ func TestMultiFS(t *testing.T) {
 	if err := os.Symlink(tc.repo.Path() +  ":master", tc.mnt + "/config/repo"); err != nil {
 		t.Fatalf("Symlink: %v", err)
 	}
+	entries, err := ioutil.ReadDir(tc.mnt)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("got %v, want 2 entries", entries)
+	}
+	
 	testGitFS(tc.mnt + "/repo", t)
 }
