@@ -2,6 +2,7 @@ package fs
 
 import (
 	"log"
+	"time"
 	"syscall"
 	"strings"
 	
@@ -101,8 +102,13 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 	}
 
 	log.Println("mounting", components)
-	// TODO - inherit options.
-	if code := n.fs.fsConn.Mount(n.corresponding.Inode(), name, fs, nil); !code.Ok() {
+	opts := &nodefs.Options{
+		EntryTimeout: time.Hour,
+		NegativeTimeout: time.Hour,
+		AttrTimeout: time.Hour,
+		PortableInodes: true,
+	}
+	if code := n.fs.fsConn.Mount(n.corresponding.Inode(), name, fs, opts); !code.Ok() {
 		return nil, code
 	}
 
