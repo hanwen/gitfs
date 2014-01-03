@@ -5,7 +5,8 @@ import (
 	"path/filepath"
 	"syscall"
 	"os"
-
+	"fmt"
+	
 	git "github.com/libgit2/git2go"
 
 	"github.com/hanwen/go-fuse/fuse/nodefs"
@@ -23,22 +24,28 @@ func (t *treeFS) Root() nodefs.Node {
 	return t.root
 }
 
-func NewTreeFS(repo *git.Repository, name string) (nodefs.FileSystem, error) {
-	ref, err := repo.LookupReference(name)
+// NewTreeFS creates a git Tree FS. The treeish should resolve to tree SHA1. 
+func NewTreeFS(repo *git.Repository, treeish string) (nodefs.FileSystem, error) {
+	obj, err := repo.RevparseSingle(treeish)
 	if err != nil {
 		return nil, err
 	}
+	defer obj.Free()
 
-	ref, err = ref.Resolve()
-	if err != nil {
-		return nil, err
+	var treeId *git.Oid
+	switch obj.Type(){
+	case git.ObjectCommit:
+		commit, err := repo.LookupCommit(obj.Id())
+		if err != nil {
+			return nil, err
+		}
+		treeId = commit.TreeId()
+	case git.ObjectTree:
+		treeId = obj.Id()
+	default:
+		return nil, fmt.Errorf("gitfs: unsupported object type %d", obj.Type())
 	}
-
-	commit, err := repo.LookupCommit(ref.Target())
-	if err != nil {
-		return nil, err
-	}
-
+	
 	dir, err := ioutil.TempDir("", "gitfs")
 	if err != nil {
 		return nil, err
@@ -49,7 +56,7 @@ func NewTreeFS(repo *git.Repository, name string) (nodefs.FileSystem, error) {
 		FileSystem: nodefs.NewDefaultFileSystem(),
 		dir: dir,
 	}
-	t.root = t.newDirNode(commit.TreeId())
+	t.root = t.newDirNode(treeId)
 	return t, nil
 }
 
@@ -144,19 +151,21 @@ func (t *treeFS) newBlobNode(id *git.Oid) (*blobNode, error) {
 		},
 	}
 	
-	blob, err := t.repo.LookupBlob(id)
-	if err != nil {
-		return nil, err
-	}
-	defer blob.Free()
-	n.size = blob.Size()
 	p := filepath.Join(t.dir, id.String())
-	if _, err := os.Lstat(p); os.IsNotExist(err) {
-		// TODO - atomic, use content store to share content.
-		err := ioutil.WriteFile(p, blob.Contents(), 0644)
+	if fi, err := os.Lstat(p); os.IsNotExist(err) {
+		blob, err := t.repo.LookupBlob(id)
 		if err != nil {
 			return nil, err
 		}
+		defer blob.Free()
+		n.size = blob.Size()
+
+		// TODO - atomic, use content store to share content.
+		if err := ioutil.WriteFile(p, blob.Contents(), 0644); err != nil {
+			return nil, err
+		}
+	} else {
+		n.size = fi.Size()
 	}
 	
 	return n, nil
