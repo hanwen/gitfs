@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"syscall"
 	"os"
+	"log"
 	"fmt"
 	
 	git "github.com/libgit2/git2go"
@@ -75,6 +76,20 @@ func (t *treeFS) OnMount(conn *nodefs.FileSystemConnector) {
 	}
 }
 
+type mutableLink struct {
+	nodefs.Node
+	content []byte
+}
+
+func (n *mutableLink) GetAttr(out *fuse.Attr, file nodefs.File, context *fuse.Context) (code fuse.Status) {
+	out.Mode = fuse.S_IFLNK
+	return fuse.OK
+}
+
+func (n *mutableLink) Readlink(c *fuse.Context) ([]byte, fuse.Status) {
+	return n.content, fuse.OK
+}
+
 type gitNode struct {
 	fs *treeFS
 	id *git.Oid
@@ -83,6 +98,27 @@ type gitNode struct {
 
 type dirNode struct {
 	gitNode
+}
+
+func (n *dirNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
+	log.Println("name",name)
+	l := &mutableLink{nodefs.NewDefaultNode(), []byte(content)}
+	n.Inode().AddChild(name, n.Inode().New(false, l))
+	return l, fuse.OK
+}
+
+func (n *dirNode) Unlink(name string, context *fuse.Context) (code fuse.Status) {
+	ch := n.Inode().GetChild(name)
+	if ch == nil {
+		return fuse.ENOENT
+	}
+
+	if _, ok := ch.Node().(*mutableLink); !ok {
+		return fuse.EPERM
+	}
+
+	n.Inode().RmChild(name)
+	return fuse.OK
 }
 
 type blobNode struct {

@@ -1,13 +1,12 @@
 package fs
 
 import (
-//	"github.com/hanwen/go-fuse/fuse"
 	"testing"
 	"io/ioutil"
 	"path/filepath"
 	"time"
 	"os"
-
+	
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse"
 	
@@ -111,6 +110,7 @@ func setupBasic() (*testCase, error) {
 	}
 	
 	server, _, err := nodefs.MountFileSystem(mnt, fs, nil)
+	server.SetDebug(true)
 	go server.Serve()
 	if err != nil {
 		return nil, err
@@ -131,6 +131,35 @@ func TestBasic(t *testing.T) {
 	defer tc.Cleanup()
 
 	testGitFS(tc.mnt, t)
+}
+
+func TestSymlink(t *testing.T) {
+	tc, err := setupBasic()
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	defer tc.Cleanup()
+
+	if err := os.Symlink("content", tc.mnt + "/mylink"); err != nil {
+		t.Fatalf("Symlink: %v", err)
+	}
+	if content, err := os.Readlink(tc.mnt + "/mylink"); err != nil {
+		t.Fatalf("Readlink: %v", err)
+	} else if content != "content" {
+		t.Fatalf("got %q, want %q", content, "content")
+	}
+
+	if err := os.Remove(tc.mnt + "/link"); err == nil {
+		t.Fatalf("removed r/o file")
+	}
+
+	if err := os.Remove(tc.mnt + "/mylink"); err != nil {
+		t.Fatalf("Remove: %v")
+	}
+	
+	if fi, err := os.Lstat(tc.mnt + "/mylink"); err == nil {
+		t.Fatalf("link still there: %v", fi)
+	}
 }
 
 func testGitFS(mnt string, t *testing.T) {
@@ -191,7 +220,6 @@ func setupMulti() (*testCase, error) {
 	}
 	
 	server, _, err := nodefs.MountFileSystem(mnt, fs, nil)
-//	server.SetDebug(true)
 	go server.Serve()
 	if err != nil {
 		return nil, err
