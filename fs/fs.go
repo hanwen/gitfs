@@ -103,7 +103,7 @@ type dirNode struct {
 func (n *dirNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
 	log.Println("name",name)
 	l := &mutableLink{nodefs.NewDefaultNode(), []byte(content)}
-	n.Inode().AddChild(name, n.Inode().New(false, l))
+	n.Inode().NewChild(name, false, l)
 	return l, fuse.OK
 }
 
@@ -246,9 +246,7 @@ func (t *treeFS) recurse(tree *git.Tree, n *dirNode) error {
 		} else {
 			panic(e)
 		}
-		ch := n.Inode().New(isdir, chNode)
-
-		n.Inode().AddChild(e.Name, ch)
+		n.Inode().NewChild(e.Name, isdir, chNode)
 		i++
 
 		if isdir {

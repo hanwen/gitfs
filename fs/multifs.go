@@ -38,9 +38,7 @@ func (m *multiGitFS) Root() nodefs.Node {
 
 func (m *multiGitFS) OnMount(fsConn *nodefs.FileSystemConnector) {
 	m.fsConn = fsConn
-	config := m.root.Inode().New(true, m.newConfigNode(m.root))
-	
-	m.root.Inode().AddChild("config", config)
+	m.root.Inode().NewChild("config", true, m.newConfigNode(m.root))
 }
 
 
@@ -84,10 +82,9 @@ func (n *gitConfigNode) Readlink(c *fuse.Context) ([]byte, fuse.Status) {
 }
 
 func (n *configNode) Mkdir(name string, mode uint32, context *fuse.Context) (nodefs.Node, fuse.Status) {
-	corr := n.Inode().New(true, nodefs.NewDefaultNode())
-	n.corresponding.Inode().AddChild(name, corr)
+	corr := n.corresponding.Inode().NewChild(name, true, nodefs.NewDefaultNode())
 	c := n.fs.newConfigNode(corr.Node())
-	n.Inode().AddChild(name, n.Inode().New(true, c))
+	n.Inode().NewChild(name, true, c)
 	return c, fuse.OK
 }
 
@@ -162,7 +159,6 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 	}
 
 	linkNode := newGitConfigNode(content)
-	ch := n.Inode().New(false, linkNode)
-	n.Inode().AddChild(name, ch)
+	n.Inode().NewChild(name, false, linkNode)
 	return linkNode, fuse.OK
 }
