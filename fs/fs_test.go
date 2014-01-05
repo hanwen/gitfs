@@ -99,7 +99,7 @@ func setupBasic() (*testCase, error) {
 		return nil, err
 	}
 	
-	fs, err := NewTreeFS(repo, "refs/heads/master")
+	root, err := NewTreeFSRoot(repo, "refs/heads/master")
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +109,7 @@ func setupBasic() (*testCase, error) {
 		return nil, err
 	}
 	
-	server, _, err := nodefs.MountFileSystem(mnt, fs, nil)
+	server, _, err := nodefs.MountRoot(mnt, root, nil)
 	server.SetDebug(true)
 	go server.Serve()
 	if err != nil {
@@ -209,7 +209,7 @@ func setupMulti() (*testCase, error) {
 		return nil, err
 	}
 	
-	fs := NewMultiGitFS()
+	root := NewMultiGitFSRoot()
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +219,7 @@ func setupMulti() (*testCase, error) {
 		return nil, err
 	}
 	
-	server, _, err := nodefs.MountFileSystem(mnt, fs, nil)
+	server, _, err := nodefs.MountRoot(mnt, root, nil)
 	go server.Serve()
 	if err != nil {
 		return nil, err

@@ -15,30 +15,24 @@ import (
 )
 
 type multiGitFS struct {
-	nodefs.FileSystem
-	
 	fsConn *nodefs.FileSystemConnector
 	root    nodefs.Node
 }
 
-func NewMultiGitFS() *multiGitFS {
-	return &multiGitFS{
-		FileSystem: nodefs.NewDefaultFileSystem(),
-		root: nodefs.NewDefaultNode(),
-	}
+func NewMultiGitFSRoot() nodefs.Node {
+	fs := &multiGitFS{}
+	fs.root = &multiGitRoot{nodefs.NewDefaultNode(), fs}
+	return fs.root
 }
 
-func (m *multiGitFS) String() string {
-	return "multigitfs"
+type multiGitRoot struct {
+	nodefs.Node
+	fs *multiGitFS
 }
 
-func (m *multiGitFS) Root() nodefs.Node {
-	return m.root
-}
-
-func (m *multiGitFS) OnMount(fsConn *nodefs.FileSystemConnector) {
-	m.fsConn = fsConn
-	m.root.Inode().NewChild("config", true, m.newConfigNode(m.root))
+func (r *multiGitRoot) OnMount(fsConn *nodefs.FileSystemConnector) {
+	r.fs.fsConn = fsConn
+	r.Inode().NewChild("config", true, r.fs.newConfigNode(r))
 }
 
 
@@ -129,10 +123,9 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 	}
 
 	var opts *nodefs.Options
-	var fs nodefs.FileSystem
-	
+	var root nodefs.Node
 	if len(components) == 1 {
-		fs = pathfs.NewPathNodeFs(pathfs.NewLoopbackFileSystem(content), nil)
+		root = pathfs.NewPathNodeFs(pathfs.NewLoopbackFileSystem(content), nil).Root()
 	} else {
 		repo, err := git.OpenRepository(components[0])
 		if err != nil {
@@ -140,9 +133,9 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 			return nil, fuse.ENOENT
 		}
 		
-		fs, err = NewTreeFS(repo, components[1])
+		root, err = NewTreeFSRoot(repo, components[1])
 		if err != nil {
-			log.Printf("NewTreeFS(%q): %v", components[1], err)
+			log.Printf("NewTreeFSRoot(%q): %v", components[1], err)
 			return nil, fuse.ENOENT
 		}
 
@@ -154,7 +147,7 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 		}
 	}
 	
-	if code := n.fs.fsConn.Mount(n.corresponding.Inode(), name, fs, opts); !code.Ok() {
+	if code := n.fs.fsConn.Mount(n.corresponding.Inode(), name, root, opts); !code.Ok() {
 		return nil, code
 	}
 

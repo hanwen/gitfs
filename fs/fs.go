@@ -15,7 +15,6 @@ import (
 )
 
 type treeFS struct {
-	nodefs.FileSystem
 	repo *git.Repository
 	root *dirNode
 	dir string
@@ -26,7 +25,7 @@ func (t *treeFS) Root() nodefs.Node {
 }
 
 // NewTreeFS creates a git Tree FS. The treeish should resolve to tree SHA1. 
-func NewTreeFS(repo *git.Repository, treeish string) (nodefs.FileSystem, error) {
+func NewTreeFSRoot(repo *git.Repository, treeish string) (nodefs.Node, error) {
 	obj, err := repo.RevparseSingle(treeish)
 	if err != nil {
 		return nil, err
@@ -54,14 +53,13 @@ func NewTreeFS(repo *git.Repository, treeish string) (nodefs.FileSystem, error) 
 	
 	t := &treeFS{
 		repo: repo,
-		FileSystem: nodefs.NewDefaultFileSystem(),
 		dir: dir,
 	}
 	t.root = t.newDirNode(treeId)
-	return t, nil
+	return t.root, nil
 }
 
-func (t *treeFS) OnMount(conn *nodefs.FileSystemConnector) {
+func (t *treeFS) onMount() {
 	tree, err := t.repo.LookupTree(t.root.id)
 	if err != nil {
 		panic(err)
@@ -98,6 +96,10 @@ type gitNode struct {
 
 type dirNode struct {
 	gitNode
+}
+
+func (n *dirNode) OnMount(conn *nodefs.FileSystemConnector) {
+	n.fs.onMount()
 }
 
 func (n *dirNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {

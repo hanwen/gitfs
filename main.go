@@ -18,8 +18,8 @@ func main() {
 
 	mntDir := flag.Args()[0]
 
-	fs := fs.NewMultiGitFS()
-	server, _, err := nodefs.MountFileSystem(mntDir, fs, &nodefs.Options{
+	root := fs.NewMultiGitFSRoot()
+	server, _, err := nodefs.MountRoot(mntDir, root, &nodefs.Options{
 		EntryTimeout: time.Hour,
 		NegativeTimeout: time.Hour,
 		AttrTimeout: time.Hour,
