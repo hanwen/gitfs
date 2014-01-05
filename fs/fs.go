@@ -16,12 +16,7 @@ import (
 
 type treeFS struct {
 	repo *git.Repository
-	root *dirNode
 	dir  string
-}
-
-func (t *treeFS) Root() nodefs.Node {
-	return t.root
 }
 
 // NewTreeFS creates a git Tree FS. The treeish should resolve to tree SHA1.
@@ -55,20 +50,20 @@ func NewTreeFSRoot(repo *git.Repository, treeish string) (nodefs.Node, error) {
 		repo: repo,
 		dir:  dir,
 	}
-	t.root = t.newDirNode(treeId)
-	return t.root, nil
+	root := t.newDirNode(treeId)
+	return root, nil
 }
 
-func (t *treeFS) onMount() {
-	tree, err := t.repo.LookupTree(t.root.id)
+func (t *treeFS) onMount(root *dirNode) {
+	tree, err := t.repo.LookupTree(root.id)
 	if err != nil {
 		panic(err)
 	}
 
-	if t.root.Inode() == nil {
+	if root.Inode() == nil {
 		panic("nil?")
 	}
-	t.recurse(tree, t.root)
+	t.recurse(tree, root)
 	if err != nil {
 		panic(err)
 	}
@@ -99,7 +94,7 @@ type dirNode struct {
 }
 
 func (n *dirNode) OnMount(conn *nodefs.FileSystemConnector) {
-	n.fs.onMount()
+	n.fs.onMount(n)
 }
 
 func (n *dirNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
@@ -161,7 +156,7 @@ func (n *blobNode) GetAttr(out *fuse.Attr, file nodefs.File, context *fuse.Conte
 	return fuse.OK
 }
 
-func (t *treeFS) newLinkNode(id *git.Oid) (*linkNode, error) {
+func (t *treeFS) newLinkNode(id *git.Oid) (nodefs.Node, error) {
 	n := &linkNode{
 		gitNode: gitNode{
 			fs:   t,
@@ -179,7 +174,7 @@ func (t *treeFS) newLinkNode(id *git.Oid) (*linkNode, error) {
 	return n, nil
 }
 
-func (t *treeFS) newBlobNode(id *git.Oid) (*blobNode, error) {
+func (t *treeFS) newBlobNode(id *git.Oid, mode int) (nodefs.Node, error) {
 	n := &blobNode{
 		gitNode: gitNode{
 			fs:   t,
@@ -205,10 +200,11 @@ func (t *treeFS) newBlobNode(id *git.Oid) (*blobNode, error) {
 		n.size = fi.Size()
 	}
 
+	n.mode = mode
 	return n, nil
 }
 
-func (t *treeFS) newDirNode(id *git.Oid) *dirNode {
+func (t *treeFS) newDirNode(id *git.Oid) nodefs.Node {
 	n := &dirNode{
 		gitNode: gitNode{
 			fs:   t,
@@ -220,17 +216,15 @@ func (t *treeFS) newDirNode(id *git.Oid) *dirNode {
 }
 
 func (t *treeFS) recurse(tree *git.Tree, n *dirNode) error {
-	i := 0
-	for {
-		e := tree.EntryByIndex(uint64(i))
+	for i := uint64(0); ; i++ {
+		e := tree.EntryByIndex(i)
 		if e == nil {
 			break
 		}
 		isdir := e.Filemode&syscall.S_IFDIR != 0
 		var chNode nodefs.Node
 		if isdir {
-			d := t.newDirNode(e.Id)
-			chNode = d
+			chNode = t.newDirNode(e.Id)
 		} else if e.Filemode&^07777 == syscall.S_IFLNK {
 			l, err := t.newLinkNode(e.Id)
 			if err != nil {
@@ -238,17 +232,15 @@ func (t *treeFS) recurse(tree *git.Tree, n *dirNode) error {
 			}
 			chNode = l
 		} else if e.Filemode&^07777 == syscall.S_IFREG {
-			b, err := t.newBlobNode(e.Id)
+			b, err := t.newBlobNode(e.Id, e.Filemode)
 			if err != nil {
 				return err
 			}
-			b.mode = e.Filemode
 			chNode = b
 		} else {
 			panic(e)
 		}
 		n.Inode().NewChild(e.Name, isdir, chNode)
-		i++
 
 		if isdir {
 			tree, err := t.repo.LookupTree(chNode.(*dirNode).id)
