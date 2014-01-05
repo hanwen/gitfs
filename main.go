@@ -1,11 +1,11 @@
 package main
 
 import (
-	"log"
 	"flag"
+	"log"
 	"os"
 	"time"
-	
+
 	"github.com/hanwen/gitfs/fs"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 )
@@ -20,10 +20,10 @@ func main() {
 
 	root := fs.NewMultiGitFSRoot()
 	server, _, err := nodefs.MountRoot(mntDir, root, &nodefs.Options{
-		EntryTimeout: time.Hour,
+		EntryTimeout:    time.Hour,
 		NegativeTimeout: time.Hour,
-		AttrTimeout: time.Hour,
-		PortableInodes: true,
+		AttrTimeout:     time.Hour,
+		PortableInodes:  true,
 	})
 	if err != nil {
 		log.Fatalf("MountFileSystem: %v", err)

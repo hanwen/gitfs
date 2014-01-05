@@ -1,15 +1,15 @@
 package fs
 
 import (
-	"testing"
 	"io/ioutil"
-	"path/filepath"
-	"time"
 	"os"
-	
-	"github.com/hanwen/go-fuse/fuse/nodefs"
+	"path/filepath"
+	"testing"
+	"time"
+
 	"github.com/hanwen/go-fuse/fuse"
-	
+	"github.com/hanwen/go-fuse/fuse/nodefs"
+
 	git "github.com/libgit2/git2go"
 )
 
@@ -22,7 +22,7 @@ func setupRepo(dir string) (*git.Repository, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	blobId, err := odb.Write([]byte("hello"), git.ObjectBlob)
 	if err != nil {
 		return nil, err
@@ -33,44 +33,44 @@ func setupRepo(dir string) (*git.Repository, error) {
 		return nil, err
 	}
 	defer subTree.Free()
-	
-	if err = subTree.Insert("subfile", blobId, git.FilemodeBlobExecutable); err !=  nil {
+
+	if err = subTree.Insert("subfile", blobId, git.FilemodeBlobExecutable); err != nil {
 		return nil, err
 	}
 	treeId, err := subTree.Write()
-	if err !=  nil {
+	if err != nil {
 		return nil, err
 	}
 
 	rootTree, err := repo.TreeBuilder()
-	if err !=  nil {
+	if err != nil {
 		return nil, err
 	}
 	defer rootTree.Free()
 
-	if err := rootTree.Insert("dir", treeId, git.FilemodeTree); err !=  nil {
+	if err := rootTree.Insert("dir", treeId, git.FilemodeTree); err != nil {
 		return nil, err
 	}
-	if err := rootTree.Insert("file", blobId, git.FilemodeBlob); err !=  nil {
+	if err := rootTree.Insert("file", blobId, git.FilemodeBlob); err != nil {
 		return nil, err
 	}
 	if err = rootTree.Insert("link", blobId, git.FilemodeLink); err != nil {
 		return nil, err
 	}
-	
+
 	rootId, err := rootTree.Write()
-	if err !=  nil {
+	if err != nil {
 		return nil, err
 	}
 
 	root, err := repo.LookupTree(rootId)
-	if err !=  nil {
+	if err != nil {
 		return nil, err
 	}
-	
+
 	sig := &git.Signature{"user", "user@invalid", time.Now()}
 	if _, err := repo.CreateCommit("refs/heads/master", sig, sig,
-		"message", root); err !=  nil {
+		"message", root); err != nil {
 		return nil, err
 	}
 
@@ -78,9 +78,9 @@ func setupRepo(dir string) (*git.Repository, error) {
 }
 
 type testCase struct {
-	repo *git.Repository
+	repo   *git.Repository
 	server *fuse.Server
-	mnt string 
+	mnt    string
 }
 
 func (tc *testCase) Cleanup() {
@@ -98,24 +98,24 @@ func setupBasic() (*testCase, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	root, err := NewTreeFSRoot(repo, "refs/heads/master")
 	if err != nil {
 		return nil, err
 	}
-	
+
 	mnt := filepath.Join(dir, "mnt")
 	if err := os.Mkdir(mnt, 0755); err != nil {
 		return nil, err
 	}
-	
+
 	server, _, err := nodefs.MountRoot(mnt, root, nil)
 	server.SetDebug(true)
 	go server.Serve()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &testCase{
 		repo,
 		server,
@@ -140,7 +140,7 @@ func TestSymlink(t *testing.T) {
 	}
 	defer tc.Cleanup()
 
-	if err := os.Symlink("content", tc.mnt + "/mylink"); err != nil {
+	if err := os.Symlink("content", tc.mnt+"/mylink"); err != nil {
 		t.Fatalf("Symlink: %v", err)
 	}
 	if content, err := os.Readlink(tc.mnt + "/mylink"); err != nil {
@@ -156,7 +156,7 @@ func TestSymlink(t *testing.T) {
 	if err := os.Remove(tc.mnt + "/mylink"); err != nil {
 		t.Fatalf("Remove: %v")
 	}
-	
+
 	if fi, err := os.Lstat(tc.mnt + "/mylink"); err == nil {
 		t.Fatalf("link still there: %v", fi)
 	}
@@ -171,22 +171,22 @@ func testGitFS(mnt string, t *testing.T) {
 	} else if fi.Size() != 5 {
 		t.Fatalf("got size %d, want file size 5", fi.Size())
 	}
-	
+
 	if fi, err := os.Lstat(mnt + "/dir"); err != nil {
 		t.Fatalf("Lstat: %v", err)
 	} else if !fi.IsDir() {
 		t.Fatalf("got %v, want dir", fi)
 	}
 
-	if fi, err := os.Lstat(mnt + "/dir/subfile");  err != nil {
+	if fi, err := os.Lstat(mnt + "/dir/subfile"); err != nil {
 		t.Fatalf("Lstat: %v", err)
-	} else if fi.IsDir() || fi.Size() != 5 || fi.Mode() & 0x111 == 0 {
+	} else if fi.IsDir() || fi.Size() != 5 || fi.Mode()&0x111 == 0 {
 		t.Fatalf("got %v, want +x file size 5", fi)
 	}
 
-	if fi, err := os.Lstat(mnt + "/link");  err != nil {
+	if fi, err := os.Lstat(mnt + "/link"); err != nil {
 		t.Fatalf("Lstat: %v", err)
-	} else if fi.Mode() & os.ModeSymlink == 0 {
+	} else if fi.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("got %v, want symlink", fi.Mode())
 	}
 
@@ -196,7 +196,6 @@ func testGitFS(mnt string, t *testing.T) {
 		t.Errorf("got %q, want %q", content, "hello")
 	}
 }
-
 
 func setupMulti() (*testCase, error) {
 	dir, err := ioutil.TempDir("", "fs_test")
@@ -208,23 +207,23 @@ func setupMulti() (*testCase, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	root := NewMultiGitFSRoot()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	mnt := filepath.Join(dir, "mnt")
 	if err := os.Mkdir(mnt, 0755); err != nil {
 		return nil, err
 	}
-	
+
 	server, _, err := nodefs.MountRoot(mnt, root, nil)
 	go server.Serve()
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &testCase{
 		repo,
 		server,
@@ -239,7 +238,7 @@ func TestMultiFS(t *testing.T) {
 	}
 	defer tc.Cleanup()
 
-	if err := os.Mkdir(tc.mnt + "/config/sub", 0755); err != nil {
+	if err := os.Mkdir(tc.mnt+"/config/sub", 0755); err != nil {
 		t.Fatalf("Mkdir %v", err)
 	}
 
@@ -248,8 +247,8 @@ func TestMultiFS(t *testing.T) {
 	} else if !fi.IsDir() {
 		t.Fatalf("want dir, got %v", fi.Mode())
 	}
-	
-	if err := os.Symlink(tc.repo.Path() +  ":master", tc.mnt + "/config/sub/repo"); err != nil {
+
+	if err := os.Symlink(tc.repo.Path()+":master", tc.mnt+"/config/sub/repo"); err != nil {
 		t.Fatalf("Symlink: %v", err)
 	}
 	entries, err := ioutil.ReadDir(tc.mnt + "/sub")
@@ -259,8 +258,8 @@ func TestMultiFS(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("got %v, want 2 entries", entries)
 	}
-	
-	testGitFS(tc.mnt + "/sub/repo", t)
+
+	testGitFS(tc.mnt+"/sub/repo", t)
 
 	// Ugh. the RELEASE opcode is not synchronized, so it
 	// may not be completed while we try the unmount.
@@ -269,7 +268,7 @@ func TestMultiFS(t *testing.T) {
 		t.Fatalf("Remove: %v", err)
 	}
 
-	if _, err := os.Lstat(tc.mnt + "/sub/repo"); err == nil  {
+	if _, err := os.Lstat(tc.mnt + "/sub/repo"); err == nil {
 		t.Errorf("repo is still there.")
 	}
 }

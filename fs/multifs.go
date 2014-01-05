@@ -2,21 +2,21 @@ package fs
 
 import (
 	"log"
-	"time"
-	"syscall"
-	"strings"
 	"os"
-	
+	"strings"
+	"syscall"
+	"time"
+
 	git "github.com/libgit2/git2go"
 
+	"github.com/hanwen/go-fuse/fuse"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse/pathfs"
-	"github.com/hanwen/go-fuse/fuse"
 )
 
 type multiGitFS struct {
 	fsConn *nodefs.FileSystemConnector
-	root    nodefs.Node
+	root   nodefs.Node
 }
 
 func NewMultiGitFSRoot() nodefs.Node {
@@ -35,10 +35,9 @@ func (r *multiGitRoot) OnMount(fsConn *nodefs.FileSystemConnector) {
 	r.Inode().NewChild("config", true, r.fs.newConfigNode(r))
 }
 
-
 type configNode struct {
 	fs *multiGitFS
-	
+
 	nodefs.Node
 
 	// non-config node corresponding to this one.
@@ -47,8 +46,8 @@ type configNode struct {
 
 func (fs *multiGitFS) newConfigNode(corresponding nodefs.Node) *configNode {
 	return &configNode{
-		fs: fs,
-		Node: nodefs.NewDefaultNode(),
+		fs:            fs,
+		Node:          nodefs.NewDefaultNode(),
 		corresponding: corresponding,
 	}
 }
@@ -61,7 +60,7 @@ type gitConfigNode struct {
 
 func newGitConfigNode(content string) *gitConfigNode {
 	return &gitConfigNode{
-		Node: nodefs.NewDefaultNode(),
+		Node:    nodefs.NewDefaultNode(),
 		content: content,
 	}
 }
@@ -109,13 +108,13 @@ func (n *configNode) Unlink(name string, context *fuse.Context) (code fuse.Statu
 func (n *configNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
 	dir := content
 	components := strings.Split(content, ":")
-	if len(components) > 2 || len(components) == 0{
+	if len(components) > 2 || len(components) == 0 {
 		return nil, fuse.Status(syscall.EINVAL)
 	}
 	if len(components) == 2 {
 		dir = components[0]
 	}
-	
+
 	if fi, err := os.Lstat(dir); err != nil {
 		return nil, fuse.ToStatus(err)
 	} else if !fi.IsDir() {
@@ -132,7 +131,7 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 			log.Printf("OpenRepository(%q): %v", components[0], err)
 			return nil, fuse.ENOENT
 		}
-		
+
 		root, err = NewTreeFSRoot(repo, components[1])
 		if err != nil {
 			log.Printf("NewTreeFSRoot(%q): %v", components[1], err)
@@ -140,13 +139,13 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 		}
 
 		opts = &nodefs.Options{
-			EntryTimeout: time.Hour,
+			EntryTimeout:    time.Hour,
 			NegativeTimeout: time.Hour,
-			AttrTimeout: time.Hour,
-			PortableInodes: true,
+			AttrTimeout:     time.Hour,
+			PortableInodes:  true,
 		}
 	}
-	
+
 	if code := n.fs.fsConn.Mount(n.corresponding.Inode(), name, root, opts); !code.Ok() {
 		return nil, code
 	}

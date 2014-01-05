@@ -1,30 +1,30 @@
 package fs
 
 import (
+	"fmt"
 	"io/ioutil"
+	"log"
+	"os"
 	"path/filepath"
 	"syscall"
-	"os"
-	"log"
-	"fmt"
-	
+
 	git "github.com/libgit2/git2go"
 
-	"github.com/hanwen/go-fuse/fuse/nodefs"
 	"github.com/hanwen/go-fuse/fuse"
+	"github.com/hanwen/go-fuse/fuse/nodefs"
 )
 
 type treeFS struct {
 	repo *git.Repository
 	root *dirNode
-	dir string
+	dir  string
 }
 
 func (t *treeFS) Root() nodefs.Node {
 	return t.root
 }
 
-// NewTreeFS creates a git Tree FS. The treeish should resolve to tree SHA1. 
+// NewTreeFS creates a git Tree FS. The treeish should resolve to tree SHA1.
 func NewTreeFSRoot(repo *git.Repository, treeish string) (nodefs.Node, error) {
 	obj, err := repo.RevparseSingle(treeish)
 	if err != nil {
@@ -33,7 +33,7 @@ func NewTreeFSRoot(repo *git.Repository, treeish string) (nodefs.Node, error) {
 	defer obj.Free()
 
 	var treeId *git.Oid
-	switch obj.Type(){
+	switch obj.Type() {
 	case git.ObjectCommit:
 		commit, err := repo.LookupCommit(obj.Id())
 		if err != nil {
@@ -45,15 +45,15 @@ func NewTreeFSRoot(repo *git.Repository, treeish string) (nodefs.Node, error) {
 	default:
 		return nil, fmt.Errorf("gitfs: unsupported object type %d", obj.Type())
 	}
-	
+
 	dir, err := ioutil.TempDir("", "gitfs")
 	if err != nil {
 		return nil, err
 	}
-	
+
 	t := &treeFS{
 		repo: repo,
-		dir: dir,
+		dir:  dir,
 	}
 	t.root = t.newDirNode(treeId)
 	return t.root, nil
@@ -103,7 +103,7 @@ func (n *dirNode) OnMount(conn *nodefs.FileSystemConnector) {
 }
 
 func (n *dirNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
-	log.Println("name",name)
+	log.Println("name", name)
 	l := &mutableLink{nodefs.NewDefaultNode(), []byte(content)}
 	n.Inode().NewChild(name, false, l)
 	return l, fuse.OK
@@ -144,7 +144,7 @@ func (n *linkNode) Readlink(c *fuse.Context) ([]byte, fuse.Status) {
 }
 
 func (n *blobNode) Open(flags uint32, context *fuse.Context) (file nodefs.File, code fuse.Status) {
-	if flags & fuse.O_ANYWRITE != 0 {
+	if flags&fuse.O_ANYWRITE != 0 {
 		return nil, fuse.EPERM
 	}
 
@@ -155,7 +155,6 @@ func (n *blobNode) Open(flags uint32, context *fuse.Context) (file nodefs.File, 
 	return nodefs.NewLoopbackFile(f), fuse.OK
 }
 
-
 func (n *blobNode) GetAttr(out *fuse.Attr, file nodefs.File, context *fuse.Context) (code fuse.Status) {
 	out.Mode = uint32(n.mode)
 	out.Size = uint64(n.size)
@@ -165,8 +164,8 @@ func (n *blobNode) GetAttr(out *fuse.Attr, file nodefs.File, context *fuse.Conte
 func (t *treeFS) newLinkNode(id *git.Oid) (*linkNode, error) {
 	n := &linkNode{
 		gitNode: gitNode{
-			fs: t,
-			id: id.Copy(),
+			fs:   t,
+			id:   id.Copy(),
 			Node: nodefs.NewDefaultNode(),
 		},
 	}
@@ -183,12 +182,12 @@ func (t *treeFS) newLinkNode(id *git.Oid) (*linkNode, error) {
 func (t *treeFS) newBlobNode(id *git.Oid) (*blobNode, error) {
 	n := &blobNode{
 		gitNode: gitNode{
-			fs: t,
-			id: id.Copy(),
+			fs:   t,
+			id:   id.Copy(),
 			Node: nodefs.NewDefaultNode(),
 		},
 	}
-	
+
 	p := filepath.Join(t.dir, id.String())
 	if fi, err := os.Lstat(p); os.IsNotExist(err) {
 		blob, err := t.repo.LookupBlob(id)
@@ -205,15 +204,15 @@ func (t *treeFS) newBlobNode(id *git.Oid) (*blobNode, error) {
 	} else {
 		n.size = fi.Size()
 	}
-	
+
 	return n, nil
 }
 
 func (t *treeFS) newDirNode(id *git.Oid) *dirNode {
 	n := &dirNode{
 		gitNode: gitNode{
-			fs: t,
-			id: id.Copy(),
+			fs:   t,
+			id:   id.Copy(),
 			Node: nodefs.NewDefaultNode(),
 		},
 	}
@@ -227,18 +226,18 @@ func (t *treeFS) recurse(tree *git.Tree, n *dirNode) error {
 		if e == nil {
 			break
 		}
-		isdir := e.Filemode & syscall.S_IFDIR != 0
+		isdir := e.Filemode&syscall.S_IFDIR != 0
 		var chNode nodefs.Node
 		if isdir {
 			d := t.newDirNode(e.Id)
 			chNode = d
-		} else if e.Filemode &^ 07777 == syscall.S_IFLNK {
+		} else if e.Filemode&^07777 == syscall.S_IFLNK {
 			l, err := t.newLinkNode(e.Id)
 			if err != nil {
 				return err
 			}
 			chNode = l
-		} else if e.Filemode &^ 07777 == syscall.S_IFREG {
+		} else if e.Filemode&^07777 == syscall.S_IFREG {
 			b, err := t.newBlobNode(e.Id)
 			if err != nil {
 				return err
@@ -264,4 +263,3 @@ func (t *treeFS) recurse(tree *git.Tree, n *dirNode) error {
 	}
 	return nil
 }
-
