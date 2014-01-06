@@ -111,10 +111,9 @@ func (n *dirNode) OnMount(conn *nodefs.FileSystemConnector) {
 	n.fs.onMount(n)
 }
 
-func (n *dirNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
+func (n *dirNode) Symlink(name string, content string, context *fuse.Context) (*nodefs.Inode, fuse.Status) {
 	l := &mutableLink{nodefs.NewDefaultNode(), []byte(content)}
-	n.Inode().NewChild(name, false, l)
-	return l, fuse.OK
+	return n.Inode().NewChild(name, false, l), fuse.OK
 }
 
 func (n *dirNode) Unlink(name string, context *fuse.Context) (code fuse.Status) {

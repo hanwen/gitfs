@@ -75,11 +75,10 @@ func (n *gitConfigNode) Readlink(c *fuse.Context) ([]byte, fuse.Status) {
 	return []byte(n.content), fuse.OK
 }
 
-func (n *configNode) Mkdir(name string, mode uint32, context *fuse.Context) (nodefs.Node, fuse.Status) {
+func (n *configNode) Mkdir(name string, mode uint32, context *fuse.Context) (*nodefs.Inode, fuse.Status) {
 	corr := n.corresponding.Inode().NewChild(name, true, nodefs.NewDefaultNode())
 	c := n.fs.newConfigNode(corr.Node())
-	n.Inode().NewChild(name, true, c)
-	return c, fuse.OK
+	return n.Inode().NewChild(name, true, c), fuse.OK
 }
 
 func (n *configNode) Unlink(name string, context *fuse.Context) (code fuse.Status) {
@@ -106,7 +105,7 @@ func (n *configNode) Unlink(name string, context *fuse.Context) (code fuse.Statu
 	return code
 }
 
-func (n *configNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
+func (n *configNode) Symlink(name string, content string, context *fuse.Context) (*nodefs.Inode, fuse.Status) {
 	dir := content
 	components := strings.Split(content, ":")
 	if len(components) > 2 || len(components) == 0 {
@@ -152,6 +151,5 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 	}
 
 	linkNode := newGitConfigNode(content)
-	n.Inode().NewChild(name, false, linkNode)
-	return linkNode, fuse.OK
+	return n.Inode().NewChild(name, false, linkNode), fuse.OK
 }
