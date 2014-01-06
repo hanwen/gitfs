@@ -17,10 +17,11 @@ import (
 type multiGitFS struct {
 	fsConn *nodefs.FileSystemConnector
 	root   nodefs.Node
+	opts   *GitFSOptions
 }
 
-func NewMultiGitFSRoot() nodefs.Node {
-	fs := &multiGitFS{}
+func NewMultiGitFSRoot(opts *GitFSOptions) nodefs.Node {
+	fs := &multiGitFS{opts: opts}
 	fs.root = &multiGitRoot{nodefs.NewDefaultNode(), fs}
 	return fs.root
 }
@@ -132,7 +133,7 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 			return nil, fuse.ENOENT
 		}
 
-		root, err = NewTreeFSRoot(repo, components[1])
+		root, err = NewTreeFSRoot(repo, components[1], n.fs.opts)
 		if err != nil {
 			log.Printf("NewTreeFSRoot(%q): %v", components[1], err)
 			return nil, fuse.ENOENT

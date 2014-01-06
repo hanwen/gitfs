@@ -11,14 +11,19 @@ import (
 )
 
 func main() {
+	lazy := flag.Bool("lazy", true, "only read contents for reads")
+	disk := flag.Bool("disk", false, "don't use intermediate files")
 	flag.Parse()
 	if len(flag.Args()) < 1 {
 		log.Fatalf("usage: %s MOUNT", os.Args[0])
 	}
 
 	mntDir := flag.Args()[0]
-
-	root := fs.NewMultiGitFSRoot()
+	opts := fs.GitFSOptions{
+		Lazy: *lazy,
+		Disk: *disk,
+	}
+	root := fs.NewMultiGitFSRoot(&opts)
 	server, _, err := nodefs.MountRoot(mntDir, root, &nodefs.Options{
 		EntryTimeout:    time.Hour,
 		NegativeTimeout: time.Hour,

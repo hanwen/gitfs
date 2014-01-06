@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sync"
 	"syscall"
 
 	git "github.com/libgit2/git2go"
@@ -17,10 +18,16 @@ import (
 type treeFS struct {
 	repo *git.Repository
 	dir  string
+	opts GitFSOptions
+}
+
+type GitFSOptions struct {
+	Lazy bool
+	Disk bool
 }
 
 // NewTreeFS creates a git Tree FS. The treeish should resolve to tree SHA1.
-func NewTreeFSRoot(repo *git.Repository, treeish string) (nodefs.Node, error) {
+func NewTreeFSRoot(repo *git.Repository, treeish string, opts *GitFSOptions) (nodefs.Node, error) {
 	obj, err := repo.RevparseSingle(treeish)
 	if err != nil {
 		return nil, err
@@ -45,10 +52,17 @@ func NewTreeFSRoot(repo *git.Repository, treeish string) (nodefs.Node, error) {
 	if err != nil {
 		return nil, err
 	}
+	if opts == nil {
+		opts = &GitFSOptions{
+			Lazy: true,
+			Disk: false,
+		}
+	}
 
 	t := &treeFS{
 		repo: repo,
 		dir:  dir,
+		opts: *opts,
 	}
 	root := t.newDirNode(treeId)
 	return root, nil
@@ -98,7 +112,6 @@ func (n *dirNode) OnMount(conn *nodefs.FileSystemConnector) {
 }
 
 func (n *dirNode) Symlink(name string, content string, context *fuse.Context) (newNode nodefs.Node, code fuse.Status) {
-	log.Println("name", name)
 	l := &mutableLink{nodefs.NewDefaultNode(), []byte(content)}
 	n.Inode().NewChild(name, false, l)
 	return l, fuse.OK
@@ -121,7 +134,7 @@ func (n *dirNode) Unlink(name string, context *fuse.Context) (code fuse.Status) 
 type blobNode struct {
 	gitNode
 	mode int
-	size int64
+	size uint64
 }
 
 type linkNode struct {
@@ -143,11 +156,23 @@ func (n *blobNode) Open(flags uint32, context *fuse.Context) (file nodefs.File, 
 		return nil, fuse.EPERM
 	}
 
-	f, err := os.Open(filepath.Join(n.fs.dir, n.id.String()))
-	if err != nil {
-		return nil, fuse.ToStatus(err)
+	ctor := n.LoadMemory
+	if n.fs.opts.Disk {
+		ctor = n.LoadDisk
 	}
-	return nodefs.NewLoopbackFile(f), fuse.OK
+
+	if !n.fs.opts.Lazy {
+		f, err := ctor()
+		if err != nil {
+			return nil, fuse.ToStatus(err)
+		}
+		return f, fuse.OK
+	}
+
+	return &lazyBlobFile{
+		ctor: ctor,
+		node: n,
+	}, fuse.OK
 }
 
 func (n *blobNode) GetAttr(out *fuse.Attr, file nodefs.File, context *fuse.Context) (code fuse.Status) {
@@ -174,6 +199,81 @@ func (t *treeFS) newLinkNode(id *git.Oid) (nodefs.Node, error) {
 	return n, nil
 }
 
+func (n *blobNode) LoadMemory() (nodefs.File, error) {
+	blob, err := n.fs.repo.LookupBlob(n.id)
+	if err != nil {
+		return nil, err
+	}
+	return &memoryFile{
+		File: nodefs.NewDefaultFile(),
+		blob: blob,
+	}, nil
+}
+
+type lazyBlobFile struct {
+	mu sync.Mutex
+	nodefs.File
+	ctor func() (nodefs.File, error)
+	node *blobNode
+}
+
+func (f *lazyBlobFile) SetInode(n *nodefs.Inode) {
+}
+
+func (f *lazyBlobFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.File == nil {
+		g, err := f.ctor()
+		if err != nil {
+			log.Printf("opening blob for %s: %v", f.node.id.String(), err)
+			return nil, fuse.EIO
+		}
+		f.File = g
+	}
+	return f.File.Read(dest, off)
+}
+
+type memoryFile struct {
+	nodefs.File
+	blob *git.Blob
+}
+
+func (f *memoryFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Status) {
+	b := f.blob.Contents()
+	end := off + int64(len(dest))
+	if end > int64(len(b)) {
+		end = int64(len(b))
+	}
+	return fuse.ReadResultData(b[off:end]), fuse.OK
+}
+
+func (f *memoryFile) Release() {
+	f.blob.Free()
+}
+
+func (n *blobNode) LoadDisk() (nodefs.File, error) {
+	p := filepath.Join(n.fs.dir, n.id.String())
+	if _, err := os.Lstat(p); os.IsNotExist(err) {
+		blob, err := n.fs.repo.LookupBlob(n.id)
+		if err != nil {
+			return nil, err
+		}
+		defer blob.Free()
+
+		// TODO - atomic, use content store to share content.
+		if err := ioutil.WriteFile(p, blob.Contents(), 0644); err != nil {
+			return nil, err
+		}
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+
+	return nodefs.NewLoopbackFile(f), nil
+}
+
 func (t *treeFS) newBlobNode(id *git.Oid, mode int) (nodefs.Node, error) {
 	n := &blobNode{
 		gitNode: gitNode{
@@ -182,24 +282,18 @@ func (t *treeFS) newBlobNode(id *git.Oid, mode int) (nodefs.Node, error) {
 			Node: nodefs.NewDefaultNode(),
 		},
 	}
-
-	p := filepath.Join(t.dir, id.String())
-	if fi, err := os.Lstat(p); os.IsNotExist(err) {
-		blob, err := t.repo.LookupBlob(id)
-		if err != nil {
-			return nil, err
-		}
-		defer blob.Free()
-		n.size = blob.Size()
-
-		// TODO - atomic, use content store to share content.
-		if err := ioutil.WriteFile(p, blob.Contents(), 0644); err != nil {
-			return nil, err
-		}
-	} else {
-		n.size = fi.Size()
+	odb, err := t.repo.Odb()
+	if err != nil {
+		return nil, err
 	}
+	defer odb.Free()
+	obj, err := odb.Read(id)
+	if err != nil {
+		return nil, err
+	}
+	defer obj.Free()
 
+	n.size = obj.Len()
 	n.mode = mode
 	return n, nil
 }

@@ -88,7 +88,7 @@ func (tc *testCase) Cleanup() {
 	tc.repo.Free()
 }
 
-func setupBasic() (*testCase, error) {
+func setupBasic(opts *GitFSOptions) (*testCase, error) {
 	dir, err := ioutil.TempDir("", "fs_test")
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func setupBasic() (*testCase, error) {
 		return nil, err
 	}
 
-	root, err := NewTreeFSRoot(repo, "refs/heads/master")
+	root, err := NewTreeFSRoot(repo, "refs/heads/master", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +124,17 @@ func setupBasic() (*testCase, error) {
 }
 
 func TestBasic(t *testing.T) {
-	tc, err := setupBasic()
+	tc, err := setupBasic(nil)
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	defer tc.Cleanup()
+
+	testGitFS(tc.mnt, t)
+}
+
+func TestBasicLazy(t *testing.T) {
+	tc, err := setupBasic(&GitFSOptions{Disk: true})
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -134,7 +144,7 @@ func TestBasic(t *testing.T) {
 }
 
 func TestSymlink(t *testing.T) {
-	tc, err := setupBasic()
+	tc, err := setupBasic(nil)
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -208,7 +218,7 @@ func setupMulti() (*testCase, error) {
 		return nil, err
 	}
 
-	root := NewMultiGitFSRoot()
+	root := NewMultiGitFSRoot(nil)
 	if err != nil {
 		return nil, err
 	}
