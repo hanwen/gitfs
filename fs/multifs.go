@@ -105,12 +105,36 @@ func (n *configNode) Unlink(name string, context *fuse.Context) (code fuse.Statu
 	return code
 }
 
+// Returns a TreeFS for the given repository. The uri must have the format REPO-DIR:TREEISH.
+func NewGitFSRoot(uri string, opts *GitFSOptions) (nodefs.Node, error) {
+	components := strings.Split(uri, ":")
+	if fi, err := os.Lstat(components[0]); err != nil {
+		return nil, err
+	} else if !fi.IsDir() {
+		return nil, syscall.ENOTDIR
+	}
+
+	repo, err := git.OpenRepository(components[0])
+	if err != nil {
+		return nil, err
+	}
+
+	root, err := NewTreeFSRoot(repo, components[1], opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return root, nil
+}
+
 func (n *configNode) Symlink(name string, content string, context *fuse.Context) (*nodefs.Inode, fuse.Status) {
 	dir := content
 	components := strings.Split(content, ":")
 	if len(components) > 2 || len(components) == 0 {
 		return nil, fuse.Status(syscall.EINVAL)
 	}
+
+	var root nodefs.Node
 	if len(components) == 2 {
 		dir = components[0]
 	}
@@ -122,22 +146,15 @@ func (n *configNode) Symlink(name string, content string, context *fuse.Context)
 	}
 
 	var opts *nodefs.Options
-	var root nodefs.Node
 	if len(components) == 1 {
 		root = pathfs.NewPathNodeFs(pathfs.NewLoopbackFileSystem(content), nil).Root()
 	} else {
-		repo, err := git.OpenRepository(components[0])
+		var err error
+		root, err = NewGitFSRoot(content, n.fs.opts)
 		if err != nil {
-			log.Printf("OpenRepository(%q): %v", components[0], err)
+			log.Printf("NewGitFSRoot(%q): %v", content, err)
 			return nil, fuse.ENOENT
 		}
-
-		root, err = NewTreeFSRoot(repo, components[1], n.fs.opts)
-		if err != nil {
-			log.Printf("NewTreeFSRoot(%q): %v", components[1], err)
-			return nil, fuse.ENOENT
-		}
-
 		opts = &nodefs.Options{
 			EntryTimeout:    time.Hour,
 			NegativeTimeout: time.Hour,
