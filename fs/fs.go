@@ -73,7 +73,7 @@ func (t *treeFS) onMount(root *dirNode) {
 	if err != nil {
 		panic(err)
 	}
-
+	defer tree.Free()
 	if root.Inode() == nil {
 		panic("nil?")
 	}
@@ -231,6 +231,23 @@ func (f *lazyBlobFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Statu
 		f.File = g
 	}
 	return f.File.Read(dest, off)
+}
+
+func (f *lazyBlobFile) Flush() (fuse.Status) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.File != nil {
+		return f.File.Flush()
+	}
+	return fuse.OK
+}
+
+func (f *lazyBlobFile) Release() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.File != nil {
+		f.File.Release()
+	}
 }
 
 type memoryFile struct {
