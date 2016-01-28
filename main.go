@@ -4,17 +4,19 @@ import (
 	"flag"
 	"log"
 	"os"
-	"strings"
+	"path/filepath"
 	"time"
 
 	"github.com/hanwen/gitfs/fs"
+	"github.com/hanwen/gitfs/manifest"
 	"github.com/hanwen/go-fuse/fuse/nodefs"
 )
 
 func main() {
 	lazy := flag.Bool("lazy", true, "only read contents for reads")
 	disk := flag.Bool("disk", false, "don't use intermediate files")
-	repo := flag.String("repo", "", "if set, mount a single repository.")
+	gitRepo := flag.String("git_repo", "", "if set, mount a single repository.")
+	repo := flag.String("repo", "", "if set, mount a single manifest from repo repository.")
 	flag.Parse()
 	if len(flag.Args()) < 1 {
 		log.Fatalf("usage: %s MOUNT", os.Args[0])
@@ -27,14 +29,21 @@ func main() {
 	}
 	var root nodefs.Node
 	if *repo != "" {
-		components := strings.Split(*repo, ":")
-		if len(components) != 2 {
-			log.Fatalf("must have 2 components: %q", *repo)
+		xml := filepath.Join(*repo, "manifest.xml")
+
+		m, err := manifest.ParseFile(xml)
+		if err != nil {
+			log.Fatalf("ParseFile(%q): %v", *repo, err)
 		}
 
+		root, err = fs.NewManifestFS(m, filepath.Join(*repo, "projects"))
+		if err != nil {
+			log.Fatalf("NewManifestFS: %v", err)
+		}
+	} else if *gitRepo != "" {
 		var err error
-		root, err = fs.NewGitFSRoot(*repo, &opts)
-		if err  != nil {
+		root, err = fs.NewGitFSRoot(*gitRepo, &opts)
+		if err != nil {
 			log.Fatalf("NewGitFSRoot: %v", err)
 		}
 	} else {

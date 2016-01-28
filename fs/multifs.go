@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -108,6 +109,10 @@ func (n *configNode) Unlink(name string, context *fuse.Context) (code fuse.Statu
 // Returns a TreeFS for the given repository. The uri must have the format REPO-DIR:TREEISH.
 func NewGitFSRoot(uri string, opts *GitFSOptions) (nodefs.Node, error) {
 	components := strings.Split(uri, ":")
+	if len(components) != 2 {
+		return nil, fmt.Errorf("must have 2 components: %q", uri)
+	}
+
 	if fi, err := os.Lstat(components[0]); err != nil {
 		return nil, err
 	} else if !fi.IsDir() {
