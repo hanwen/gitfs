@@ -132,7 +132,7 @@ func (n *dirNode) Unlink(name string, context *fuse.Context) (code fuse.Status) 
 
 type blobNode struct {
 	gitNode
-	mode int
+	mode git.Filemode
 	size uint64
 }
 
@@ -233,7 +233,7 @@ func (f *lazyBlobFile) Read(dest []byte, off int64) (fuse.ReadResult, fuse.Statu
 	return f.File.Read(dest, off)
 }
 
-func (f *lazyBlobFile) Flush() (fuse.Status) {
+func (f *lazyBlobFile) Flush() fuse.Status {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.File != nil {
@@ -290,7 +290,7 @@ func (n *blobNode) LoadDisk() (nodefs.File, error) {
 	return nodefs.NewLoopbackFile(f), nil
 }
 
-func (t *treeFS) newBlobNode(id *git.Oid, mode int) (nodefs.Node, error) {
+func (t *treeFS) newBlobNode(id *git.Oid, mode git.Filemode) (nodefs.Node, error) {
 	n := &blobNode{
 		gitNode: gitNode{
 			fs:   t,
