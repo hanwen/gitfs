@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 )
 
 func main() {
+	debug := flag.Bool("debug", false, "print FUSE debug data")
 	lazy := flag.Bool("lazy", true, "only read contents for reads")
 	disk := flag.Bool("disk", false, "don't use intermediate files")
 	gitRepo := flag.String("git_repo", "", "if set, mount a single repository.")
@@ -22,10 +24,16 @@ func main() {
 		log.Fatalf("usage: %s MOUNT", os.Args[0])
 	}
 
+	tempDir, err := ioutil.TempDir("", "gitfs")
+	if err != nil {
+		log.Fatalf("TempDir: %v", err)
+	}
+
 	mntDir := flag.Args()[0]
 	opts := fs.GitFSOptions{
-		Lazy: *lazy,
-		Disk: *disk,
+		Lazy:    *lazy,
+		Disk:    *disk,
+		TempDir: tempDir,
 	}
 	var root nodefs.Node
 	if *repo != "" {
@@ -57,6 +65,9 @@ func main() {
 	})
 	if err != nil {
 		log.Fatalf("MountFileSystem: %v", err)
+	}
+	if *debug {
+		server.SetDebug(true)
 	}
 	log.Printf("Started git multi fs FUSE on %s", mntDir)
 	server.Serve()

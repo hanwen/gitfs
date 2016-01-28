@@ -17,13 +17,13 @@ import (
 
 type treeFS struct {
 	repo *git.Repository
-	dir  string
 	opts GitFSOptions
 }
 
 type GitFSOptions struct {
-	Lazy bool
-	Disk bool
+	Lazy    bool
+	Disk    bool
+	TempDir string
 }
 
 // NewTreeFS creates a git Tree FS. The treeish should resolve to tree SHA1.
@@ -48,20 +48,21 @@ func NewTreeFSRoot(repo *git.Repository, treeish string, opts *GitFSOptions) (no
 		return nil, fmt.Errorf("gitfs: unsupported object type %d", obj.Type())
 	}
 
-	dir, err := ioutil.TempDir("", "gitfs")
-	if err != nil {
-		return nil, err
-	}
 	if opts == nil {
 		opts = &GitFSOptions{
 			Lazy: true,
 			Disk: false,
 		}
 	}
+	if opts.TempDir == "" {
+		opts.TempDir, err = ioutil.TempDir("", "gitfs")
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	t := &treeFS{
 		repo: repo,
-		dir:  dir,
 		opts: *opts,
 	}
 	root := t.newDirNode(treeId)
@@ -269,7 +270,7 @@ func (f *memoryFile) Release() {
 }
 
 func (n *blobNode) LoadDisk() (nodefs.File, error) {
-	p := filepath.Join(n.fs.dir, n.id.String())
+	p := filepath.Join(n.fs.opts.TempDir, n.id.String())
 	if _, err := os.Lstat(p); os.IsNotExist(err) {
 		blob, err := n.fs.repo.LookupBlob(n.id)
 		if err != nil {
