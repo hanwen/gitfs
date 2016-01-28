@@ -1,7 +1,6 @@
 package manifest
 
 import (
-	"encoding/xml"
 	"reflect"
 	"testing"
 )
@@ -24,12 +23,12 @@ var aospManifest = `<?xml version="1.0" encoding="UTF-8"?>
 </manifest>`
 
 func TestBasic(t *testing.T) {
-	var manifest Manifest
-	if err := xml.Unmarshal([]byte(aospManifest), &manifest); err != nil {
+	manifest, err := Parse([]byte(aospManifest))
+	if err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
 
-	want := Manifest{
+	want := &Manifest{
 		Remote: Remote{
 			Name:   "aosp",
 			Fetch:  "..",
@@ -42,8 +41,13 @@ func TestBasic(t *testing.T) {
 		},
 		Project: []Project{
 			{
-				Path: "build",
-				Name: "platform/build",
+				Path:         "build",
+				Name:         "platform/build",
+				GroupsString: "pdk,tradefed",
+				Groups: map[string]bool{
+					"pdk":      true,
+					"tradefed": true,
+				},
 				Copyfile: []Copyfile{
 					{
 						Src:  "core/root.mk",
@@ -52,8 +56,13 @@ func TestBasic(t *testing.T) {
 				},
 			},
 			{
-				Path: "build/soong",
-				Name: "platform/build/soong",
+				Path:         "build/soong",
+				Name:         "platform/build/soong",
+				GroupsString: "pdk,tradefed",
+				Groups: map[string]bool{
+					"pdk":      true,
+					"tradefed": true,
+				},
 				Linkfile: []Linkfile{
 					{
 						Src:  "root.bp",
