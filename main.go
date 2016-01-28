@@ -44,7 +44,7 @@ func main() {
 			log.Fatalf("ParseFile(%q): %v", *repo, err)
 		}
 
-		root, err = fs.NewManifestFS(m, filepath.Join(*repo, "projects"))
+		root, err = fs.NewManifestFS(m, filepath.Join(*repo, "projects"), &opts)
 		if err != nil {
 			log.Fatalf("NewManifestFS: %v", err)
 		}
