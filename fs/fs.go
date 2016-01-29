@@ -326,7 +326,7 @@ func (t *treeFS) newDirNode(id *git.Oid) nodefs.Node {
 	return n
 }
 
-func (t *treeFS) recurse(tree *git.Tree, n *dirNode) error {
+func (t *treeFS) recurse(tree *git.Tree, n nodefs.Node) error {
 	for i := uint64(0); ; i++ {
 		e := tree.EntryByIndex(i)
 		if e == nil {
@@ -352,14 +352,13 @@ func (t *treeFS) recurse(tree *git.Tree, n *dirNode) error {
 			panic(e)
 		}
 		n.Inode().NewChild(e.Name, isdir, chNode)
-
 		if isdir {
-			tree, err := t.repo.LookupTree(chNode.(*dirNode).id)
+			tree, err := t.repo.LookupTree(e.Id)
 			if err != nil {
 				return err
 			}
 
-			if err := t.recurse(tree, chNode.(*dirNode)); err != nil {
+			if err := t.recurse(tree, chNode); err != nil {
 				return nil
 			}
 		}
