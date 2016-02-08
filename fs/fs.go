@@ -304,13 +304,12 @@ func (t *treeFS) newBlobNode(id *git.Oid, mode git.Filemode) (nodefs.Node, error
 		return nil, err
 	}
 	defer odb.Free()
-	obj, err := odb.Read(id)
+	sz, _, err := odb.ReadHeader(id)
 	if err != nil {
 		return nil, err
 	}
-	defer obj.Free()
 
-	n.size = obj.Len()
+	n.size = sz
 	n.mode = mode
 	return n, nil
 }
